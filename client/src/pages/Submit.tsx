@@ -97,6 +97,28 @@ export default function Submit() {
     });
   };
 
+  const extractPluginIdFromFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsText(file);
+      reader.onload = () => {
+        const text = reader.result as string;
+        const match = /Plugin\.register\(\s*['"]([a-z0-9_-]+)['"]/i.exec(text);
+        if (match && match[1]) {
+          resolve(match[1]);
+        } else {
+          const fallbackId = file.name.replace(/\.js$/, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, "_")
+            .replace(/_+/g, "_")
+            .replace(/(^_|_$)/g, "");
+          resolve(fallbackId);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -124,12 +146,8 @@ export default function Submit() {
         return;
       }
 
-      // Convert plugin title to clean folder id
-      const pluginId = formData.title
-        .toLowerCase()
-        .replace(/[^a-z0-9_]/g, "_")
-        .replace(/_+/g, "_")
-        .replace(/(^_|_$)/g, "");
+      // Convert plugin file content to obtain actual Plugin ID
+      const pluginId = await extractPluginIdFromFile(formData.pluginFile);
 
       // Convert files to Base64
       const originalFilename = formData.pluginFile.name;

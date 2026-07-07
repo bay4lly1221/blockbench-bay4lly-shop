@@ -427,6 +427,13 @@
                     color: var(--color-accent);
                 }
                 
+                .plugin-icon-overlay img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 6px;
+                }
+                
                 .plugin-info {
                     padding: 30px 12px 12px 12px;
                     flex: 1;
@@ -514,6 +521,13 @@
                     justify-content: center;
                     z-index: 1;
                     flex-shrink: 0;
+                }
+                
+                .details-icon img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 12px;
                 }
                 
                 .details-title-box {
@@ -811,7 +825,8 @@
                         <div class="plugin-card" onclick="Bay4llyShop.showDetails('${plugin.id}')">
                             <div class="plugin-banner" style="background-image: url('${REPO_URL}plugins/${plugin.folder}/${plugin.banner || 'banner.png'}')"></div>
                             <div class="plugin-icon-overlay">
-                                <i class="material-icons">extension</i>
+                                <img src="${REPO_URL}plugins/${plugin.folder}/icon.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                                <i class="material-icons" style="display: none;">extension</i>
                             </div>
                             <div class="plugin-info">
                                 <div class="plugin-title">${plugin.title}</div>
@@ -863,7 +878,8 @@
                     </div>
                     <div class="details-meta">
                         <div class="details-icon">
-                            <i class="material-icons" style="font-size: 48px; color: var(--color-accent);">extension</i>
+                            <img src="${REPO_URL}plugins/${plugin.folder}/icon.png" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                            <i class="material-icons" style="font-size: 48px; color: var(--color-accent); display: none;">extension</i>
                         </div>
                         <div class="details-title-box">
                             <h1>${plugin.title}</h1>

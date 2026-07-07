@@ -928,14 +928,15 @@
             Blockbench.showQuickMessage(`Installing ${plugin.title}...`, 2000);
 
             try {
-                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/${plugin.id}.js`);
+                const targetFilename = plugin.filename || `${plugin.id}.js`;
+                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/${targetFilename}`);
                 if (!resp.ok) throw new Error('Failed to download plugin');
                 
                 const code = await resp.text();
 
                 const isAppMode = typeof fs !== 'undefined' && typeof PathModule !== 'undefined';
                 if (isAppMode) {
-                    const path = PathModule.join(Blockbench.plugin_directory, `${plugin.id}.js`);
+                    const path = PathModule.join(Blockbench.plugin_directory, targetFilename);
                     fs.writeFileSync(path, code);
                     
                     // Reload/load the plugin in Blockbench so it registers under the correct file name context

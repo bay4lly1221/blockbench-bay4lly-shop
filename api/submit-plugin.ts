@@ -89,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       description: metadata.description,
       category: metadata.category,
       folder: pluginId,
+      filename: metadata.filename,
       featured: false,
       verified: false,
       beta: metadata.beta,

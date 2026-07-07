@@ -132,8 +132,9 @@ export default function Submit() {
         .replace(/(^_|_$)/g, "");
 
       // Convert files to Base64
+      const originalFilename = formData.pluginFile.name;
       const files: Record<string, string> = {};
-      files[`${pluginId}.js`] = await fileToBase64(formData.pluginFile);
+      files[originalFilename] = await fileToBase64(formData.pluginFile);
       
       if (formData.iconFile) {
         files["icon.png"] = await fileToBase64(formData.iconFile);
@@ -162,6 +163,7 @@ export default function Submit() {
             tags: formData.tags,
             minVersion: formData.minVersion,
             beta: formData.beta,
+            filename: originalFilename,
           },
           files,
         }),

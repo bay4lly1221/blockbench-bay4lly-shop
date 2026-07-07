@@ -166,6 +166,7 @@ async function startServer() {
         description: metadata.description,
         category: metadata.category,
         folder: pluginId,
+        filename: metadata.filename,
         featured: false,
         verified: false,
         beta: metadata.beta,

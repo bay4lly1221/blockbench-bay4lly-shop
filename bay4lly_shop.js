@@ -112,7 +112,7 @@
 
                 console.log('[Bay4lly Shop] Fetching plugins from: ' + REPO_URL + 'plugins.json');
                 
-                const response = await fetch(`${REPO_URL}plugins.json`, {
+                const response = await fetch(`${REPO_URL}plugins.json?t=${Date.now()}`, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
                 });
@@ -919,7 +919,7 @@
 
         async loadReadme(plugin) {
             try {
-                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/README.md`);
+                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/README.md?t=${Date.now()}`);
                 if (resp.ok) {
                     const text = await resp.text();
                     const readmeDiv = document.getElementById('readme_markdown');
@@ -953,7 +953,7 @@
 
             try {
                 const targetFilename = plugin.filename || `${plugin.id}.js`;
-                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/${targetFilename}`);
+                const resp = await fetch(`${REPO_URL}plugins/${plugin.folder}/${targetFilename}?t=${Date.now()}`);
                 if (!resp.ok) throw new Error('Failed to download plugin');
                 
                 const code = await resp.text();

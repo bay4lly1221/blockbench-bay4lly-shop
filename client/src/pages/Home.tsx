@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Github, Upload, CheckCircle, Zap } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 interface GitHubUser {
   login: string;
@@ -253,8 +253,11 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-700 bg-slate-900/50 py-8 mt-20">
-        <div className="max-w-6xl mx-auto px-4 text-center text-slate-400">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between text-slate-400 gap-4">
           <p>© 2026 Bay4lly Shop. Blockbench topluluğu için yapılmıştır.</p>
+          <Link to="/admin" className="text-xs text-slate-500 hover:text-blue-400 hover:underline transition">
+            Yönetim Paneli
+          </Link>
         </div>
       </footer>
     </div>

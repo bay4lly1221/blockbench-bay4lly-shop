@@ -247,6 +247,246 @@ async function startServer() {
     }
   });
 
+  // Admin Login Endpoint
+  app.post("/api/admin/login", (req, res) => {
+    const { username, password } = req.body;
+    if (username === "bay4lly" && password === "zZxX62544+3388") {
+      return res.json({ success: true, token: "admin_token_placeholder" });
+    }
+    return res.status(401).json({ error: "Invalid admin credentials" });
+  });
+
+  // Admin Edit Plugin Endpoint
+  app.post("/api/admin/edit-plugin", async (req, res) => {
+    const { username, password, pluginId, metadata, files } = req.body;
+    if (username !== "bay4lly" || password !== "zZxX62544+3388") {
+      return res.status(401).json({ error: "Unauthorized admin credentials" });
+    }
+
+    const adminToken = process.env.GITHUB_ADMIN_TOKEN;
+    if (!adminToken) {
+      return res.status(500).json({ error: "GITHUB_ADMIN_TOKEN is not configured on the server." });
+    }
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${adminToken}`,
+        "User-Agent": "bay4lly_dev_portal_app",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      const owner = "bay4lly1221";
+      const repo = "bay4lly-shop-repo";
+      const branch = "main";
+
+      // 1. Fetch current plugins.json
+      let existingPlugins: any[] = [];
+      let pluginsJsonSha: string | undefined = undefined;
+
+      try {
+        const pluginsJsonResp = await axios.get(
+          `https://api.github.com/repos/${owner}/${repo}/contents/plugins.json?ref=${branch}`,
+          { headers }
+        );
+        pluginsJsonSha = pluginsJsonResp.data.sha;
+        const rawContent = Buffer.from(pluginsJsonResp.data.content, "base64").toString("utf-8");
+        existingPlugins = JSON.parse(rawContent);
+      } catch (e: any) {
+        if (e.response?.status !== 404) {
+          throw e;
+        }
+      }
+
+      // 2. Find and update the plugin metadata
+      const pluginIndex = existingPlugins.findIndex((p: any) => p.id === pluginId);
+      const oldPlugin = pluginIndex > -1 ? existingPlugins[pluginIndex] : {};
+      
+      const updatedPluginEntry = {
+        id: pluginId,
+        title: metadata.title,
+        author: oldPlugin.author || "bay4lly1221",
+        version: metadata.version,
+        description: metadata.description,
+        category: metadata.category,
+        folder: pluginId,
+        filename: metadata.filename || oldPlugin.filename || `${pluginId}.js`,
+        featured: metadata.featured !== undefined ? metadata.featured : (oldPlugin.featured || false),
+        verified: metadata.verified !== undefined ? metadata.verified : (oldPlugin.verified || false),
+        beta: metadata.beta !== undefined ? metadata.beta : (oldPlugin.beta || false),
+        tags: Array.isArray(metadata.tags)
+          ? metadata.tags
+          : (metadata.tags || "")
+              .split(",")
+              .map((t: string) => t.trim())
+              .filter(Boolean),
+        min_version: metadata.minVersion || oldPlugin.min_version || "4.0.0",
+      };
+
+      if (pluginIndex > -1) {
+        existingPlugins[pluginIndex] = updatedPluginEntry;
+      } else {
+        existingPlugins.push(updatedPluginEntry);
+      }
+
+      // 3. Commit updated plugins.json
+      const updatedPluginsJsonB64 = Buffer.from(
+        JSON.stringify(existingPlugins, null, 2),
+        "utf-8"
+      ).toString("base64");
+
+      await axios.put(
+        `https://api.github.com/repos/${owner}/${repo}/contents/plugins.json`,
+        {
+          message: `Admin: Update metadata for ${pluginId}`,
+          content: updatedPluginsJsonB64,
+          sha: pluginsJsonSha,
+          branch,
+        },
+        { headers }
+      );
+
+      // 4. Overwrite files
+      if (files) {
+        for (const [filename, base64Content] of Object.entries(files)) {
+          if (!base64Content) continue;
+          const filePath = `plugins/${pluginId}/${filename}`;
+
+          let fileSha: string | undefined = undefined;
+          try {
+            const fileResp = await axios.get(
+              `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+              { headers }
+            );
+            fileSha = fileResp.data.sha;
+          } catch (e: any) {
+            if (e.response?.status !== 404) {
+              throw e;
+            }
+          }
+
+          await axios.put(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+            {
+              message: `Admin: Add/Update ${filename} for ${pluginId}`,
+              content: base64Content,
+              sha: fileSha,
+              branch,
+            },
+            { headers }
+          );
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Admin edit plugin error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Failed to edit plugin metadata on GitHub.",
+        details: error.response?.data || error.message,
+      });
+    }
+  });
+
+  // Admin Delete Plugin Endpoint
+  app.post("/api/admin/delete-plugin", async (req, res) => {
+    const { username, password, pluginId } = req.body;
+    if (username !== "bay4lly" || password !== "zZxX62544+3388") {
+      return res.status(401).json({ error: "Unauthorized admin credentials" });
+    }
+
+    const adminToken = process.env.GITHUB_ADMIN_TOKEN;
+    if (!adminToken) {
+      return res.status(500).json({ error: "GITHUB_ADMIN_TOKEN is not configured on the server." });
+    }
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${adminToken}`,
+        "User-Agent": "bay4lly_dev_portal_app",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      const owner = "bay4lly1221";
+      const repo = "bay4lly-shop-repo";
+      const branch = "main";
+
+      // 1. Fetch plugins.json
+      let existingPlugins: any[] = [];
+      let pluginsJsonSha: string | undefined = undefined;
+
+      try {
+        const pluginsJsonResp = await axios.get(
+          `https://api.github.com/repos/${owner}/${repo}/contents/plugins.json?ref=${branch}`,
+          { headers }
+        );
+        pluginsJsonSha = pluginsJsonResp.data.sha;
+        const rawContent = Buffer.from(pluginsJsonResp.data.content, "base64").toString("utf-8");
+        existingPlugins = JSON.parse(rawContent);
+      } catch (e: any) {
+        if (e.response?.status !== 404) {
+          throw e;
+        }
+      }
+
+      // 2. Remove the plugin from metadata
+      const updatedPlugins = existingPlugins.filter((p: any) => p.id !== pluginId);
+
+      // 3. Commit updated plugins.json
+      const updatedPluginsJsonB64 = Buffer.from(
+        JSON.stringify(updatedPlugins, null, 2),
+        "utf-8"
+      ).toString("base64");
+
+      await axios.put(
+        `https://api.github.com/repos/${owner}/${repo}/contents/plugins.json`,
+        {
+          message: `Admin: Delete plugin entry ${pluginId}`,
+          content: updatedPluginsJsonB64,
+          sha: pluginsJsonSha,
+          branch,
+        },
+        { headers }
+      );
+
+      // 4. Delete the plugin directory files
+      const folderPath = `plugins/${pluginId}`;
+      try {
+        const filesResp = await axios.get(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${folderPath}?ref=${branch}`,
+          { headers }
+        );
+
+        if (Array.isArray(filesResp.data)) {
+          for (const file of filesResp.data) {
+            await axios.delete(
+              `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}`,
+              {
+                headers,
+                data: {
+                  message: `Admin: Delete ${file.name} for ${pluginId}`,
+                  sha: file.sha,
+                  branch,
+                }
+              }
+            );
+          }
+        }
+      } catch (e: any) {
+        if (e.response?.status !== 404) {
+          throw e;
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Admin delete plugin error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Failed to delete plugin from GitHub.",
+        details: error.response?.data || error.message,
+      });
+    }
+  });
+
   // Handle client-side routing - serve index.html for all routes
   app.get("*", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));

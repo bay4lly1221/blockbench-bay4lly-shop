@@ -871,6 +871,8 @@
             
             if (sidebar) sidebar.style.display = 'none';
             
+            const isInstalled = (typeof Plugins !== 'undefined' && Plugins.all && Plugins.all[plugin.id] && Plugins.all[plugin.id].loaded) || this.installed_plugins[plugin.id];
+
             main.innerHTML = `
                 <div class="details-container">
                     <div class="details-header">
@@ -886,9 +888,15 @@
                             <div class="plugin-author">by ${plugin.author} • v${plugin.version}</div>
                         </div>
                         <div class="details-actions">
-                            <button class="btn-install" onclick="Bay4llyShop.installPlugin('${plugin.id}')">
-                                <i class="material-icons">download</i> Install
-                            </button>
+                            ${isInstalled ? `
+                                <button class="btn-install btn-uninstall" onclick="Bay4llyShop.uninstallPlugin('${plugin.id}')" style="background: #e53935; border-color: #d32f2f;">
+                                    <i class="material-icons">delete</i> Uninstall
+                                </button>
+                            ` : `
+                                <button class="btn-install" onclick="Bay4llyShop.installPlugin('${plugin.id}')">
+                                    <i class="material-icons">download</i> Install
+                                </button>
+                            `}
                             <button class="button" onclick="Bay4llyShop.backToHome()" style="padding: 8px 12px;">
                                 <i class="material-icons">arrow_back</i>
                             </button>
@@ -954,9 +962,12 @@
                 const idMatch = /Plugin\.register\(\s*['"]([a-z0-9_-]+)['"]/i.exec(code);
                 const actualRegisterId = idMatch ? idMatch[1] : plugin.id;
 
-                const isAppMode = typeof fs !== 'undefined' && typeof PathModule !== 'undefined';
+                const isAppMode = typeof require !== 'undefined';
                 if (isAppMode) {
-                    const path = PathModule.join(Blockbench.plugin_directory, targetFilename);
+                    const fs = require('fs');
+                    const PathModule = require('path');
+                    const pluginsDir = (typeof Plugins !== 'undefined' ? Plugins.directory : undefined) || Blockbench.plugin_directory || '';
+                    const path = PathModule.join(pluginsDir, targetFilename);
                     fs.writeFileSync(path, code);
                     
                     if (typeof Plugins !== 'undefined' && typeof Plugins.updateLocalList === 'function') {
@@ -964,19 +975,26 @@
                     }
                     
                     // Reload/load the plugin in Blockbench so it registers under the correct file name context
-                    if (typeof autoUnloadPlugin === 'function') {
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.all !== 'undefined' && Plugins.all[actualRegisterId]) {
+                        if (typeof Plugins.all[actualRegisterId].unload === 'function') {
+                            Plugins.all[actualRegisterId].unload();
+                        }
+                    } else if (typeof autoUnloadPlugin === 'function') {
                         autoUnloadPlugin(actualRegisterId);
                     }
-                    if (typeof loadPlugin === 'function') {
+
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.load === 'function') {
+                        Plugins.load(actualRegisterId);
+                    } else if (typeof loadPlugin === 'function') {
                         loadPlugin(actualRegisterId);
                     } else {
                         // Fallback: require the newly written file if loadPlugin is not globally exposed
                         if (typeof require !== 'undefined') {
-                            const resolvedPath = require.resolve(path);
-                            if (require.cache[resolvedPath]) {
-                                delete require.cache[resolvedPath];
+                            try {
+                                require(path);
+                            } catch (requireErr) {
+                                console.error('Require fallback failed:', requireErr);
                             }
-                            require(path);
                         }
                     }
                 } else {
@@ -987,6 +1005,7 @@
                 this.saveInstalledPlugins();
                 
                 Blockbench.showQuickMessage(`${plugin.title} installed!`, 3000);
+                this.showDetails(plugin.id);
             } catch (e) {
                 Blockbench.showMessageBox({
                     title: 'Installation Failed',
@@ -996,12 +1015,69 @@
             }
         },
 
+        async uninstallPlugin(pluginId) {
+            const plugin = this.plugins.find(p => p.id === pluginId);
+            if (!plugin) return;
+
+            Blockbench.showQuickMessage(`Uninstalling ${plugin.title}...`, 2000);
+
+            try {
+                const targetFilename = plugin.filename || `${plugin.id}.js`;
+                const isAppMode = typeof require !== 'undefined';
+                if (isAppMode) {
+                    const fs = require('fs');
+                    const PathModule = require('path');
+                    const pluginsDir = (typeof Plugins !== 'undefined' ? Plugins.directory : undefined) || Blockbench.plugin_directory || '';
+                    const path = PathModule.join(pluginsDir, targetFilename);
+
+                    // 1. Unload the plugin from Blockbench registry
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.all !== 'undefined' && Plugins.all[plugin.id]) {
+                        if (typeof Plugins.all[plugin.id].unload === 'function') {
+                            Plugins.all[plugin.id].unload();
+                        }
+                    }
+
+                    // 2. Delete the file from the disk
+                    if (fs.existsSync(path)) {
+                        fs.unlinkSync(path);
+                    }
+
+                    // 3. Rescan local folder
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.updateLocalList === 'function') {
+                        Plugins.updateLocalList();
+                    }
+                } else {
+                    // Browser mode fallback: just unload
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.all !== 'undefined' && Plugins.all[plugin.id]) {
+                        if (typeof Plugins.all[plugin.id].unload === 'function') {
+                            Plugins.all[plugin.id].unload();
+                        }
+                    }
+                }
+
+                delete this.installed_plugins[plugin.id];
+                this.saveInstalledPlugins();
+                
+                Blockbench.showQuickMessage(`${plugin.title} uninstalled!`, 3000);
+                this.showDetails(plugin.id);
+            } catch (e) {
+                Blockbench.showMessageBox({
+                    title: 'Uninstallation Failed',
+                    icon: 'error',
+                    message: `Could not uninstall ${plugin.title}. Error: ${e.message}`
+                });
+            }
+        },
+
         showUpdates() {
             Blockbench.showQuickMessage('Checking for updates...', 2000);
         },
 
         showInstalled() {
-            const installed = this.plugins.filter(p => this.installed_plugins[p.id]);
+            const installed = this.plugins.filter(p => {
+                const isLoaded = typeof Plugins !== 'undefined' && Plugins.all && Plugins.all[p.id] && Plugins.all[p.id].loaded;
+                return isLoaded || this.installed_plugins[p.id];
+            });
             if (installed.length === 0) {
                 Blockbench.showQuickMessage('No plugins installed from Bay4lly Shop.', 2000);
                 return;

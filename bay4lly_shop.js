@@ -950,17 +950,25 @@
                 
                 const code = await resp.text();
 
+                // Extract actual register ID from code to avoid any caching mismatch in Blockbench
+                const idMatch = /Plugin\.register\(\s*['"]([a-z0-9_-]+)['"]/i.exec(code);
+                const actualRegisterId = idMatch ? idMatch[1] : plugin.id;
+
                 const isAppMode = typeof fs !== 'undefined' && typeof PathModule !== 'undefined';
                 if (isAppMode) {
                     const path = PathModule.join(Blockbench.plugin_directory, targetFilename);
                     fs.writeFileSync(path, code);
                     
+                    if (typeof Plugins !== 'undefined' && typeof Plugins.updateLocalList === 'function') {
+                        Plugins.updateLocalList();
+                    }
+                    
                     // Reload/load the plugin in Blockbench so it registers under the correct file name context
                     if (typeof autoUnloadPlugin === 'function') {
-                        autoUnloadPlugin(plugin.id);
+                        autoUnloadPlugin(actualRegisterId);
                     }
                     if (typeof loadPlugin === 'function') {
-                        loadPlugin(plugin.id);
+                        loadPlugin(actualRegisterId);
                     } else {
                         // Fallback: require the newly written file if loadPlugin is not globally exposed
                         if (typeof require !== 'undefined') {

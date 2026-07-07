@@ -487,6 +487,145 @@ async function startServer() {
     }
   });
 
+  // Admin Fetch Pending PRs Endpoint
+  app.post("/api/admin/pending-prs", async (req, res) => {
+    const { username, password } = req.body;
+    if (username !== "bay4lly" || password !== "zZxX62544+3388") {
+      return res.status(401).json({ error: "Unauthorized admin credentials" });
+    }
+
+    const adminToken = process.env.GITHUB_ADMIN_TOKEN;
+    if (!adminToken) {
+      return res.status(500).json({ error: "GITHUB_ADMIN_TOKEN is not configured on the server." });
+    }
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${adminToken}`,
+        "User-Agent": "bay4lly_dev_portal_app",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      const owner = "bay4lly1221";
+      const repo = "bay4lly-shop-repo";
+
+      const pullsResponse = await axios.get(
+        `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`,
+        { headers }
+      );
+
+      const pendingPlugins = pullsResponse.data
+        .filter((pr: any) => pr.title.startsWith("Add plugin:"))
+        .map((pr: any) => ({
+          number: pr.number,
+          title: pr.title.replace("Add plugin:", "").trim(),
+          user: pr.user.login,
+          created_at: pr.created_at,
+          html_url: pr.html_url,
+          body: pr.body,
+          head_ref: pr.head.ref,
+          head_label: pr.head.label,
+        }));
+
+      res.json(pendingPlugins);
+    } catch (error: any) {
+      console.error("Fetch pending PRs error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Failed to fetch open pull requests from GitHub.",
+        details: error.response?.data || error.message,
+      });
+    }
+  });
+
+  // Admin Merge PR Endpoint
+  app.post("/api/admin/merge-pr", async (req, res) => {
+    const { username, password, prNumber } = req.body;
+    if (username !== "bay4lly" || password !== "zZxX62544+3388") {
+      return res.status(401).json({ error: "Unauthorized admin credentials" });
+    }
+
+    const adminToken = process.env.GITHUB_ADMIN_TOKEN;
+    if (!adminToken) {
+      return res.status(500).json({ error: "GITHUB_ADMIN_TOKEN is not configured on the server." });
+    }
+
+    if (!prNumber) {
+      return res.status(400).json({ error: "prNumber is required." });
+    }
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${adminToken}`,
+        "User-Agent": "bay4lly_dev_portal_app",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      const owner = "bay4lly1221";
+      const repo = "bay4lly-shop-repo";
+
+      const mergeResponse = await axios.put(
+        `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/merge`,
+        {
+          commit_title: `Admin: Approve and Merge plugin submission #${prNumber}`,
+          merge_method: "squash"
+        },
+        { headers }
+      );
+
+      res.json({ success: true, sha: mergeResponse.data.sha });
+    } catch (error: any) {
+      console.error("Merge PR error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Failed to merge the pull request.",
+        details: error.response?.data || error.message,
+      });
+    }
+  });
+
+  // Admin Close PR Endpoint
+  app.post("/api/admin/close-pr", async (req, res) => {
+    const { username, password, prNumber } = req.body;
+    if (username !== "bay4lly" || password !== "zZxX62544+3388") {
+      return res.status(401).json({ error: "Unauthorized admin credentials" });
+    }
+
+    const adminToken = process.env.GITHUB_ADMIN_TOKEN;
+    if (!adminToken) {
+      return res.status(500).json({ error: "GITHUB_ADMIN_TOKEN is not configured on the server." });
+    }
+
+    if (!prNumber) {
+      return res.status(400).json({ error: "prNumber is required." });
+    }
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${adminToken}`,
+        "User-Agent": "bay4lly_dev_portal_app",
+        Accept: "application/vnd.github.v3+json",
+      };
+
+      const owner = "bay4lly1221";
+      const repo = "bay4lly-shop-repo";
+
+      await axios.patch(
+        `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+        {
+          state: "closed"
+        },
+        { headers }
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Close PR error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Failed to close the pull request.",
+        details: error.response?.data || error.message,
+      });
+    }
+  });
+
   // Handle client-side routing - serve index.html for all routes
   app.get("*", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));

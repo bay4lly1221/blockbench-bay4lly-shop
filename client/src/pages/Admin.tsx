@@ -42,6 +42,11 @@ export default function Admin() {
   const [loadingPlugins, setLoadingPlugins] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // PR Approval system state
+  const [activeTab, setActiveTab] = useState<"plugins" | "prs">("plugins");
+  const [prs, setPrs] = useState<any[]>([]);
+  const [loadingPrs, setLoadingPrs] = useState(false);
+
   // Search & Filters
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -74,6 +79,7 @@ export default function Admin() {
     if (session === "true") {
       setIsLoggedIn(true);
       fetchPlugins();
+      fetchPrs();
     }
   }, []);
 
@@ -89,6 +95,84 @@ export default function Admin() {
       toast.error("Plugin listesi yüklenemedi: " + e.message);
     } finally {
       setLoadingPlugins(false);
+    }
+  };
+
+  const fetchPrs = async () => {
+    setLoadingPrs(true);
+    try {
+      const savedPass = localStorage.getItem("bay4lly_admin_pass") || "";
+      const response = await fetch("/api/admin/pending-prs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "bay4lly", password: savedPass })
+      });
+      if (!response.ok) throw new Error("Açık PR listesi yüklenemedi.");
+      const data = await response.json();
+      setPrs(data);
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Bekleyen başvurular yüklenemedi: " + e.message);
+    } finally {
+      setLoadingPrs(false);
+    }
+  };
+
+  const handleApprovePR = async (prNumber: number, title: string) => {
+    if (!window.confirm(`"${title}" adlı eklenti başvurusunu onaylayıp ana mağazaya dahil etmek istediğinize emin misiniz?`)) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const savedPass = localStorage.getItem("bay4lly_admin_pass") || "";
+      const response = await fetch("/api/admin/merge-pr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "bay4lly", password: savedPass, prNumber })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "PR birleştirilemedi.");
+      }
+
+      toast.success("Eklenti onaylandı ve birleştirildi! Vercel derlemesi otomatik başladı.");
+      // Refresh both plugins list and PRs list
+      setTimeout(() => {
+        fetchPlugins();
+        fetchPrs();
+      }, 3000);
+    } catch (e: any) {
+      toast.error("Hata: " + e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectPR = async (prNumber: number, title: string) => {
+    if (!window.confirm(`"${title}" eklenti başvurusunu reddetmek ve kapatmak istediğinize emin misiniz?`)) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const savedPass = localStorage.getItem("bay4lly_admin_pass") || "";
+      const response = await fetch("/api/admin/close-pr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "bay4lly", password: savedPass, prNumber })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "PR kapatılamadı.");
+      }
+
+      toast.info("Eklenti başvurusu reddedildi ve kapatıldı.");
+      setTimeout(fetchPrs, 2000);
+    } catch (e: any) {
+      toast.error("Hata: " + e.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -113,6 +197,7 @@ export default function Admin() {
       setIsLoggedIn(true);
       toast.success("Yönetim paneline başarıyla giriş yapıldı.");
       fetchPlugins();
+      fetchPrs();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -369,151 +454,292 @@ export default function Admin() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
-        {/* Statistics & Filters Bar */}
-        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-6 w-full md:w-auto">
-            <div>
-              <div className="text-2xl font-black text-blue-400">{plugins.length}</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Toplam Eklenti</div>
-            </div>
-            <div className="w-px h-10 bg-slate-800" />
-            <div>
-              <div className="text-2xl font-black text-emerald-400">
-                {plugins.filter(p => p.verified).length}
-              </div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Doğrulanmış</div>
-            </div>
-            <div className="w-px h-10 bg-slate-800" />
-            <div>
-              <div className="text-2xl font-black text-amber-400">
-                {plugins.filter(p => p.featured).length}
-              </div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Öne Çıkan</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
-            <input
-              type="text"
-              placeholder="Eklenti ara (ad, ID veya yazar)..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="px-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl outline-none text-slate-100 placeholder-slate-600 focus:border-blue-500 transition text-sm w-full md:w-64"
-            />
-
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl outline-none text-slate-200 focus:border-blue-500 transition text-sm"
-            >
-              <option value="All">Tüm Kategoriler</option>
-              <option value="Models">Models</option>
-              <option value="Textures">Textures</option>
-              <option value="Tools">Tools</option>
-              <option value="Animations">Animations</option>
-              <option value="Shaders">Shaders</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-slate-800 gap-6">
+          <button
+            onClick={() => setActiveTab("plugins")}
+            className={`pb-3 text-sm font-semibold transition relative ${
+              activeTab === "plugins" 
+                ? "text-blue-400" 
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Mağaza Eklentileri ({plugins.length})
+            {activeTab === "plugins" && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
+            )}
+          </button>
+          
+          <button
+            onClick={() => {
+              setActiveTab("prs");
+              fetchPrs();
+            }}
+            className={`pb-3 text-sm font-semibold transition relative flex items-center gap-1.5 ${
+              activeTab === "prs" 
+                ? "text-blue-400" 
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Bekleyen Başvurular
+            {prs.length > 0 && (
+              <span className="px-1.5 py-0.5 bg-blue-500/20 border border-blue-500/30 text-blue-400 rounded-md text-[10px] font-bold">
+                {prs.length}
+              </span>
+            )}
+            {activeTab === "prs" && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full" />
+            )}
+          </button>
         </div>
 
-        {/* Plugin Table Grid */}
-        <div className="bg-slate-900/20 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between">
-            <h2 className="font-bold tracking-tight">Kayıtlı Eklentiler</h2>
-            <button 
-              onClick={() => toast.info("Yeni eklentileri ana portal üzerinden yükleyip, bu panelden düzenleyebilirsiniz.")}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition"
-            >
-              <Plus className="w-3.5 h-3.5" /> Yeni Eklenti Ekle
-            </button>
-          </div>
+        {activeTab === "plugins" && (
+          <>
+            {/* Statistics & Filters Bar */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-6 w-full md:w-auto">
+                <div>
+                  <div className="text-2xl font-black text-blue-400">{plugins.length}</div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Toplam Eklenti</div>
+                </div>
+                <div className="w-px h-10 bg-slate-800" />
+                <div>
+                  <div className="text-2xl font-black text-emerald-400">
+                    {plugins.filter(p => p.verified).length}
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Doğrulanmış</div>
+                </div>
+                <div className="w-px h-10 bg-slate-800" />
+                <div>
+                  <div className="text-2xl font-black text-amber-400">
+                    {plugins.filter(p => p.featured).length}
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Öne Çıkan</div>
+                </div>
+              </div>
 
-          {loadingPlugins ? (
-            <div className="py-20 flex flex-col items-center justify-center text-slate-500 gap-3">
-              <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-              <span className="text-sm">Eklenti listesi GitHub'dan çekiliyor...</span>
+              <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+                <input
+                  type="text"
+                  placeholder="Eklenti ara (ad, ID veya yazar)..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="px-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl outline-none text-slate-100 placeholder-slate-600 focus:border-blue-500 transition text-sm w-full md:w-64"
+                />
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-4 py-2 bg-slate-950/80 border border-slate-800 rounded-xl outline-none text-slate-200 focus:border-blue-500 transition text-sm"
+                >
+                  <option value="All">Tüm Kategoriler</option>
+                  <option value="Models">Models</option>
+                  <option value="Textures">Textures</option>
+                  <option value="Tools">Tools</option>
+                  <option value="Animations">Animations</option>
+                  <option value="Shaders">Shaders</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
             </div>
-          ) : filteredPlugins.length === 0 ? (
-            <div className="py-20 text-center text-slate-500 text-sm">
-              Eşleşen herhangi bir eklenti bulunamadı.
+
+            {/* Plugin Table Grid */}
+            <div className="bg-slate-900/20 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+              <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between">
+                <h2 className="font-bold tracking-tight">Kayıtlı Eklentiler</h2>
+                <button 
+                  onClick={() => toast.info("Yeni eklentileri ana portal üzerinden yükleyip, bu panelden düzenleyebilirsiniz.")}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Yeni Eklenti Ekle
+                </button>
+              </div>
+
+              {loadingPlugins ? (
+                <div className="py-20 flex flex-col items-center justify-center text-slate-500 gap-3">
+                  <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="text-sm">Eklenti listesi GitHub'dan çekiliyor...</span>
+                </div>
+              ) : filteredPlugins.length === 0 ? (
+                <div className="py-20 text-center text-slate-500 text-sm">
+                  Eşleşen herhangi bir eklenti bulunamadı.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 font-semibold bg-slate-950/20">
+                        <th className="px-6 py-3.5">İkon & Eklenti Adı</th>
+                        <th className="px-6 py-3.5">Kategori</th>
+                        <th className="px-6 py-3.5">Versiyon</th>
+                        <th className="px-6 py-3.5">Yazar</th>
+                        <th className="px-6 py-3.5">Rozetler</th>
+                        <th className="px-6 py-3.5 text-right">Eylemler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {filteredPlugins.map((plugin) => (
+                        <tr key={plugin.id} className="hover:bg-slate-900/20 transition">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-slate-950 border border-slate-800 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
+                                <img
+                                  src={`${REPO_URL}plugins/${plugin.folder}/icon.png`}
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).outerHTML = `<div class="w-5 h-5 text-slate-600 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-puzzle"><path d="M19.439 10.04a2.98 2.98 0 0 0-5.183-1.226 3 3 0 0 0-4.228-4.228 2.98 2.98 0 0 0-1.226-5.183c-.888-.204-1.802.26-2.227 1.077L4.76 4.108C3.896 4.972 3 6.136 3 7.378v9.244c0 1.242.896 2.406 1.76 3.27l1.815 3.63c.425.817 1.339 1.281 2.227 1.077a2.98 2.98 0 0 0 1.226-5.183 3 3 0 0 0 4.228-4.228 2.98 2.98 0 0 0 5.183-1.226c.204-.888-.26-1.802-1.077-2.227l-3.63-1.815a3.27 3.27 0 0 1 0-5.83l3.63-1.815c.817-.425 1.281-1.339 1.077-2.227z"/></svg></div>`;
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div>
+                                <div className="font-semibold text-slate-100">{plugin.title}</div>
+                                <div className="text-xs text-slate-500 font-mono mt-0.5">{plugin.id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-300 font-medium">{plugin.category}</td>
+                          <td className="px-6 py-4 text-slate-400 font-mono text-xs">v{plugin.version}</td>
+                          <td className="px-6 py-4 text-slate-300">@{plugin.author}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {plugin.verified && (
+                                <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase rounded-md">✓ Doğrulanmış</span>
+                              )}
+                              {plugin.featured && (
+                                <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase rounded-md">★ Vitrin</span>
+                              )}
+                              {plugin.beta && (
+                                <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase rounded-md">Beta</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                onClick={() => openEditModal(plugin)}
+                                disabled={actionLoading}
+                                className="p-1.5 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 hover:text-blue-400 rounded-lg transition"
+                                title="Düzenle"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(plugin.id, plugin.title)}
+                                disabled={actionLoading}
+                                className="p-1.5 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 hover:text-red-400 rounded-lg transition"
+                                title="Sil"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold bg-slate-950/20">
-                    <th className="px-6 py-3.5">İkon & Eklenti Adı</th>
-                    <th className="px-6 py-3.5">Kategori</th>
-                    <th className="px-6 py-3.5">Versiyon</th>
-                    <th className="px-6 py-3.5">Yazar</th>
-                    <th className="px-6 py-3.5">Rozetler</th>
-                    <th className="px-6 py-3.5 text-right">Eylemler</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredPlugins.map((plugin) => (
-                    <tr key={plugin.id} className="hover:bg-slate-900/20 transition">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-slate-950 border border-slate-800 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
-                            <img
-                              src={`${REPO_URL}plugins/${plugin.folder}/icon.png`}
-                              onError={(e) => {
-                                (e.target as HTMLElement).outerHTML = `<div class="w-5 h-5 text-slate-600 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-puzzle"><path d="M19.439 10.04a2.98 2.98 0 0 0-5.183-1.226 3 3 0 0 0-4.228-4.228 2.98 2.98 0 0 0-1.226-5.183c-.888-.204-1.802.26-2.227 1.077L4.76 4.108C3.896 4.972 3 6.136 3 7.378v9.244c0 1.242.896 2.406 1.76 3.27l1.815 3.63c.425.817 1.339 1.281 2.227 1.077a2.98 2.98 0 0 0 1.226-5.183 3 3 0 0 0 4.228-4.228 2.98 2.98 0 0 0 5.183-1.226c.204-.888-.26-1.802-1.077-2.227l-3.63-1.815a3.27 3.27 0 0 1 0-5.83l3.63-1.815c.817-.425 1.281-1.339 1.077-2.227z"/></svg></div>`;
-                              }}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <div>
-                            <div className="font-semibold text-slate-100">{plugin.title}</div>
-                            <div className="text-xs text-slate-500 font-mono mt-0.5">{plugin.id}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-300 font-medium">{plugin.category}</td>
-                      <td className="px-6 py-4 text-slate-400 font-mono text-xs">v{plugin.version}</td>
-                      <td className="px-6 py-4 text-slate-300">@{plugin.author}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {plugin.verified && (
-                            <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase rounded-md">✓ Doğrulanmış</span>
-                          )}
-                          {plugin.featured && (
-                            <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase rounded-md">★ Vitrin</span>
-                          )}
-                          {plugin.beta && (
-                            <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase rounded-md">Beta</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            onClick={() => openEditModal(plugin)}
-                            disabled={actionLoading}
-                            className="p-1.5 hover:bg-blue-500/10 border border-transparent hover:border-blue-500/20 hover:text-blue-400 rounded-lg transition"
-                            title="Düzenle"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(plugin.id, plugin.title)}
-                            disabled={actionLoading}
-                            className="p-1.5 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 hover:text-red-400 rounded-lg transition"
-                            title="Sil"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+          </>
+        )}
+
+        {activeTab === "prs" && (
+          <div className="bg-slate-900/20 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between">
+              <h2 className="font-bold tracking-tight">Bekleyen Başvurular (GitHub Pull Requests)</h2>
+              <button 
+                onClick={fetchPrs}
+                disabled={loadingPrs}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+              >
+                Yenile
+              </button>
+            </div>
+
+            {loadingPrs ? (
+              <div className="py-20 flex flex-col items-center justify-center text-slate-500 gap-3">
+                <div className="w-8 h-8 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-sm">Bekleyen başvurular GitHub'dan sorgulanıyor...</span>
+              </div>
+            ) : prs.length === 0 ? (
+              <div className="py-20 text-center text-slate-500 text-sm">
+                Şu anda incelenmeyi bekleyen herhangi bir eklenti başvurusu bulunmuyor.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-semibold bg-slate-950/20">
+                      <th className="px-6 py-3.5">Eklenti Adı</th>
+                      <th className="px-6 py-3.5">Gönderen Geliştirici</th>
+                      <th className="px-6 py-3.5">Gönderim Tarihi</th>
+                      <th className="px-6 py-3.5">Açıklama Detayları</th>
+                      <th className="px-6 py-3.5 text-right">Eylemler</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {prs.map((pr) => (
+                      <tr key={pr.number} className="hover:bg-slate-900/20 transition">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-100">{pr.title}</div>
+                          <div className="text-xs text-slate-500 font-mono mt-0.5">PR #{pr.number}</div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-300">
+                          <a 
+                            href={`https://github.com/${pr.user}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="hover:text-blue-400 hover:underline transition"
+                          >
+                            @{pr.user}
+                          </a>
+                        </td>
+                        <td className="px-6 py-4 text-slate-400 font-mono text-xs">
+                          {new Date(pr.created_at).toLocaleDateString("tr-TR", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </td>
+                        <td className="px-6 py-4 max-w-xs truncate text-slate-400 text-xs">
+                          {pr.body || "Açıklama belirtilmemiş."}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="inline-flex items-center gap-3">
+                            <a
+                              href={pr.html_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> İncele
+                            </a>
+                            <button
+                              onClick={() => handleApprovePR(pr.number, pr.title)}
+                              disabled={actionLoading}
+                              className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-emerald-400 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Kabul Et
+                            </button>
+                            <button
+                              onClick={() => handleRejectPR(pr.number, pr.title)}
+                              disabled={actionLoading}
+                              className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                            >
+                              <X className="w-3.5 h-3.5" /> Reddet
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Editing Modal Dialog */}
